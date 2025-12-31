@@ -1,0 +1,8 @@
+const firebaseConfig = {
+  apiKey: "AIzaSyBw-GkA1uZIr0b8IzTrdADHZjUKCj2SpS4",
+  authDomain: "topnotch-assets.firebaseapp.com",
+  projectId: "topnotch-assets",
+  storageBucket: "topnotch-assets.firebasestorage.app",
+  messagingSenderId: "331841848252",
+  appId: "1:331841848252:web:7f6cf2933744d22a67a1b9"
+};

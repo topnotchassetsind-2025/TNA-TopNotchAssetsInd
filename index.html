@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/x-icon" href="/logo.ico">
+  <meta charset="UTF-8">
+  <title>TNA Launch</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="css/loader.css">
+
+  <style>
+    body{
+      margin:0;
+      height:100vh;
+      background:#05060f;
+      color:#fff;
+      font-family:Inter,system-ui,sans-serif;
+      overflow:hidden;
+    }
+
+    /* ================= COUNTDOWN ================= */
+    .countdown-wrap{
+      position:fixed;
+      inset:0;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      background:#05060f;
+      z-index:10;
+    }
+
+    .countdown h2{
+      letter-spacing:2px;
+      color:#b8bbff;
+      margin-bottom:20px;
+    }
+
+    .time{
+      display:flex;
+      gap:16px;
+    }
+
+    .box{
+      background:#0f1324;
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px;
+      padding:16px 20px;
+      min-width:70px;
+      text-align:center;
+    }
+
+    .box span{
+      font-size:26px;
+      font-weight:700;
+      color:#6467ff;
+      display:block;
+    }
+
+    .box small{
+      font-size:11px;
+      letter-spacing:1px;
+      color:#aeb2ff;
+    }
+
+    /* ================= LOADER ================= */
+    .loader{
+      position:fixed;
+      inset:0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      background:#05060f;
+      z-index:5;
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- ================= COUNTDOWN ================= -->
+<div class="countdown-wrap" id="countdownScreen">
+  <div class="countdown">
+   
+    <h2>Website <br>Launching In</h2>
+    <div class="time">
+      <div class="box"><span id="d">00</span><small>DAYS</small></div>
+      <div class="box"><span id="h">00</span><small>HRS</small></div>
+      <div class="box"><span id="m">00</span><small>MIN</small></div>
+      <div class="box"><span id="s">00</span><small>SEC</small></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= YOUR ORIGINAL LOADER ================= -->
+<div class="loader" id="loader">
+
+  <svg width="0" height="0">
+    <defs>
+      <linearGradient id="grad-main" x1="0" y1="64" x2="0" y2="0">
+        <stop offset="0%" stop-color="#ff3c7d">
+          <animate attributeName="stop-color"
+            values="#ff3c7d; #00e0ff; #7cff00; #ff3c7d"
+            dur="2s" repeatCount="indefinite"/>
+        </stop>
+        <stop offset="100%" stop-color="#007cff">
+          <animate attributeName="stop-color"
+            values="#007cff; #7cff00; #ff3c7d; #007cff"
+            dur="2s" repeatCount="indefinite"/>
+        </stop>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <!-- T -->
+  <svg viewBox="0 0 64 64" width="64">
+    <path d="M10 10 H54 M32 10 V54"
+      stroke="url(#grad-main)" stroke-width="8"
+      stroke-linecap="round" fill="none"/>
+  </svg>
+
+  <!-- N -->
+  <svg viewBox="0 0 64 64" width="64">
+    <path d="M12 54 V10 L52 54 V10"
+      stroke="url(#grad-main)" stroke-width="8"
+      stroke-linecap="round" fill="none"/>
+  </svg>
+
+  <!-- A -->
+  <svg viewBox="0 0 64 64" width="64">
+    <path d="M32 8 L10 54 M32 8 L54 54 M20 38 H44"
+      stroke="url(#grad-main)" stroke-width="8"
+      stroke-linecap="round" fill="none"/>
+  </svg>
+
+</div>
+
+<script>
+/* ================= LAUNCH TIME ================= */
+const LAUNCH_TIME = new Date("2026-01-01T00:00:00+05:30").getTime();
+
+/* ================= DOM ================= */
+const cWrap = document.getElementById("countdownScreen");
+const loader = document.getElementById("loader");
+
+const dEl = document.getElementById("d");
+const hEl = document.getElementById("h");
+const mEl = document.getElementById("m");
+const sEl = document.getElementById("s");
+
+/* ================= COUNTDOWN ================= */
+function updateCountdown(){
+  const diff = LAUNCH_TIME - Date.now();
+
+  if(diff <= 0){
+    cWrap.style.display = "none";
+    loader.style.display = "flex";
+
+    setTimeout(()=>{
+      window.location.replace("home.html");
+    }, 2000);
+
+    return;
+  }
+
+  dEl.textContent = String(Math.floor(diff / 86400000)).padStart(2,"0");
+  hEl.textContent = String(Math.floor(diff / 3600000) % 24).padStart(2,"0");
+  mEl.textContent = String(Math.floor(diff / 60000) % 60).padStart(2,"0");
+  sEl.textContent = String(Math.floor(diff / 1000) % 60).padStart(2,"0");
+}
+
+updateCountdown();
+setInterval(updateCountdown, 1000);
+</script>
+
+</body>
+</html>
