@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-   <link rel="icon" type="image/x-icon" href="/logo.ico">
+<link rel="icon" href="/logo.ico">
 <meta charset="UTF-8">
 <title>Model Preview | TopNotch Assets</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,13 +11,11 @@ html,body{
   margin:0;
   background:#000;
   color:#fff;
-  font-family:Inter,system-ui,sans-serif;
+  font-family:Inter,system-ui,sans-serif
 }
 
-/* VIEWER */
 .viewer{height:75vh}
 
-/* INFO BAR */
 .info-bar{
   height:90px;
   display:flex;
@@ -25,16 +23,7 @@ html,body{
   justify-content:space-between;
   padding:0 32px;
   background:#020617;
-  border-top:1px solid rgba(255,255,255,.08);
-}
-
-.info-left h3{margin:0;font-weight:600}
-.info-left p{margin:4px 0 0;font-size:13px;color:#9aa4ff}
-
-.like{
-  cursor:pointer;
-  font-size:20px;
-  user-select:none;
+  border-top:1px solid rgba(255,255,255,.08)
 }
 
 #downloadBtn{
@@ -44,229 +33,232 @@ html,body{
   font-weight:700;
   cursor:pointer;
   background:linear-gradient(90deg,#00eaff,#6f7bff);
-  color:#000;
+  color:#000
 }
 
-/* COMMENTS */
+#downloadBtn:disabled{
+  opacity:.6;
+  cursor:not-allowed;
+}
+
 .comments{
   max-width:900px;
   margin:40px auto;
-  padding:0 20px;
+  padding:0 20px
 }
 
-.comments h2{
-  font-size:20px;
-  margin-bottom:18px;
-}
-
-.comment-box{
-  display:flex;
-  gap:12px;
-  margin-bottom:30px;
-}
-
-.comment-box textarea{
-  flex:1;
-  resize:none;
-  padding:14px 16px;
+textarea{
+  width:100%;
+  padding:14px;
   border-radius:12px;
   background:#020617;
   border:1px solid rgba(255,255,255,.1);
   color:#fff;
+  margin-bottom:10px
 }
 
-.comment-box button{
-  padding:14px 22px;
-  border-radius:12px;
+button{
+  padding:12px 20px;
+  border-radius:10px;
   border:none;
-  font-weight:600;
   cursor:pointer;
-  background:linear-gradient(90deg,#6467ff,#8b5cf6);
-  color:#fff;
+  background:#6366f1;
+  color:#fff
 }
 
 .comment{
-  padding:18px;
-  margin-bottom:14px;
-  border-radius:14px;
   background:#020617;
   border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;
+  padding:16px;
+  margin-bottom:14px
 }
 
 .comment-head{
   display:flex;
   justify-content:space-between;
-  margin-bottom:6px;
+  align-items:center
 }
 
-.comment-email{font-weight:600;font-size:14px}
-.comment-time{font-size:12px;color:#9aa4ff}
-.comment-text{font-size:14px;line-height:1.6}
+.comment-user{
+  display:flex;
+  gap:8px;
+  align-items:center
+}
+
+.admin-badge{
+  font-size:11px;
+  padding:3px 8px;
+  border-radius:999px;
+  background:linear-gradient(135deg,#facc15,#f59e0b,#d97706);
+  color:#000;
+  font-weight:700
+}
 </style>
 </head>
 
 <body>
 
-<!-- VIEWER -->
+<!-- ================= VIEWER ================= -->
 <div class="viewer">
-  <model-viewer id="viewer" camera-controls auto-rotate
-    rotation-per-second="15deg" exposure="1.1"
-    interaction-prompt="none" disable-pan
+  <model-viewer id="viewer"
+    camera-controls
+    auto-rotate
     style="width:100%;height:100%">
   </model-viewer>
 </div>
 
-<!-- INFO BAR -->
+<!-- ================= INFO BAR ================= -->
 <div class="info-bar">
-  <div class="info-left">
+  <div>
     <h3 id="modelName"></h3>
     <p id="modelMeta"></p>
   </div>
-
-  <div class="like" id="likeBtn">🤍 0</div>
-  <button id="downloadBtn">Download</button>
+  <button id="downloadBtn" disabled>Download</button>
 </div>
 
-<!-- COMMENTS -->
+<!-- ================= COMMENTS ================= -->
 <div class="comments">
   <h2>Comments</h2>
 
-  <div class="comment-box">
-    <textarea id="commentInput" rows="2" placeholder="Login to comment"></textarea>
-    <button id="postBtn" disabled>Post</button>
-  </div>
+  <textarea id="commentInput" placeholder="Login to comment" disabled></textarea>
+  <button id="postBtn" disabled>Post</button>
 
   <div id="commentList"></div>
 </div>
+
+<!-- ================= FIREBASE ================= -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
   getFirestore, doc, getDoc, updateDoc, increment,
-  collection, setDoc, deleteDoc, addDoc,
-  query, orderBy, onSnapshot, serverTimestamp
+  collection, addDoc, query, orderBy, onSnapshot, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-/* INIT */
+/* ================= INIT ================= */
 const app = initializeApp({
   apiKey: "AIzaSyBy5JEPEcplViq8AkK-_uY8JXU5iHUM6ns",
   authDomain: "top-notch-log-data.firebaseapp.com",
   projectId: "top-notch-log-data"
 });
+
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-/* MODEL */
-const id = new URLSearchParams(location.search).get("id");
-const modelRef = doc(db, "models", id);
-const snap = await getDoc(modelRef);
+/* ================= ADMIN LIST ================= */
+const ADMIN_EMAILS = [
+  "hrd9011@gmail.com",
+  "gggonetaponetap@gmail.com",
+  "sunnehsunnehjk@gmail.com"
+];
 
-if (!snap.exists()) {
+/* ================= AUTH ================= */
+let currentUser = null;
+
+onAuthStateChanged(auth, user => {
+  currentUser = user;
+  commentInput.disabled = !user;
+  postBtn.disabled = !user;
+});
+
+/* ================= GET MODEL ================= */
+const id = new URLSearchParams(location.search).get("id");
+if (!id) {
+  alert("Invalid model");
+  location.href = "models.html";
+}
+
+const modelRef = doc(db, "models", id);
+const modelSnap = await getDoc(modelRef);
+
+if (!modelSnap.exists()) {
   alert("Model not found");
   location.href = "models.html";
 }
 
-const d = snap.data();
-viewer.src = d.modelUrl;
-modelName.innerText = d.name;
-modelMeta.innerText = `${d.game || "Unknown"} · ${d.category || ""}`;
+const model = modelSnap.data();
 
-const likeBtn = document.getElementById("likeBtn");
-let currentUser = null;
-
-/* AUTH */
-onAuthStateChanged(auth, async user => {
-  currentUser = user;
-  commentInput.disabled = !user;
-  postBtn.disabled = !user;
-  if (user) refreshLike();
-});
-
-/* LIKE SYSTEM */
-async function refreshLike() {
-  const likeRef = doc(db, "models", id, "likes", currentUser.uid);
-  const likeSnap = await getDoc(likeRef);
-  const count = (await getDoc(modelRef)).data().likesCount || 0;
-  likeBtn.innerText = likeSnap.exists() ? `❤️ ${count}` : `🤍 ${count}`;
+/* ================= GET STORAGE SETTINGS ================= */
+const settingsSnap = await getDoc(doc(db, "settings", "storage"));
+if (!settingsSnap.exists()) {
+  alert("Storage settings missing");
+  throw new Error("settings/storage missing");
 }
 
-likeBtn.onclick = async () => {
-  if (!currentUser) return alert("Login required");
+const r2BaseUrl = settingsSnap.data().r2BaseUrl.replace(/\/$/, "");
 
-  const likeRef = doc(db, "models", id, "likes", currentUser.uid);
-  const likeSnap = await getDoc(likeRef);
+/* ================= BUILD FILE URLS ================= */
+const modelUrl = `${r2BaseUrl}/${model.modelFile}`;
+const downloadUrl = `${r2BaseUrl}/${model.downloadFile}`;
 
-  if (likeSnap.exists()) {
-    await deleteDoc(likeRef);
-    await updateDoc(modelRef, { likesCount: increment(-1) });
-  } else {
-    await setDoc(likeRef, {
-      uid: currentUser.uid,
-      createdAt: serverTimestamp()
-    });
-    await updateDoc(modelRef, { likesCount: increment(1) });
-  }
-  refreshLike();
-};
+/* ================= VIEWER ================= */
+viewer.src = modelUrl;
+modelName.innerText = model.name;
+modelMeta.innerText = `${model.game || ""} · ${model.category || ""}`;
 
-/* DOWNLOAD */
+/* ✅ ENABLE DOWNLOAD BUTTON (THIS WAS MISSING) */
+downloadBtn.disabled = false;
+
+/* ================= DOWNLOAD ================= */
 downloadBtn.onclick = async () => {
   try {
-    await updateDoc(modelRef, { downloadsCount: increment(1) });
-    window.open(d.downloadLink, "_blank");
+    await updateDoc(modelRef, {
+      downloadsCount: increment(1)
+    });
+    window.open(downloadUrl, "_blank");
   } catch (err) {
     console.error(err);
     alert("Download failed");
   }
 };
 
-/* COMMENTS */
-const q = query(
-  collection(db, "models", id, "comments"),
-  orderBy("createdAt", "desc")
-);
+/* ================= COMMENTS ================= */
+const commentsRef = collection(db, "models", id, "comments");
+const q = query(commentsRef, orderBy("createdAt", "desc"));
 
 onSnapshot(q, snap => {
   commentList.innerHTML = "";
-  snap.forEach(doc => {
-    const c = doc.data();
+
+  snap.forEach(docSnap => {
+    const c = docSnap.data();
+    const isAdmin = ADMIN_EMAILS.includes(c.userEmail);
+
     commentList.innerHTML += `
       <div class="comment">
         <div class="comment-head">
-          <span>${c.userEmail}</span>
-          <span>${timeAgo(c.createdAt?.toDate())}</span>
+          <div class="comment-user">
+            <b>${c.userEmail}</b>
+            ${isAdmin ? `<span class="admin-badge">ADMIN</span>` : ""}
+          </div>
+          <span>${c.createdAt ? new Date(c.createdAt.seconds*1000).toLocaleString() : ""}</span>
         </div>
-        <div>${c.text}</div>
-      </div>`;
+        <p>${c.text}</p>
+      </div>
+    `;
   });
 });
 
-/* POST COMMENT */
+/* ================= POST COMMENT ================= */
 postBtn.onclick = async () => {
   if (!currentUser) return;
+
   const text = commentInput.value.trim();
   if (!text) return;
 
-  await addDoc(collection(db, "models", id, "comments"), {
+  await addDoc(commentsRef, {
     text,
     userEmail: currentUser.email,
-    uid: currentUser.uid,
     createdAt: serverTimestamp()
   });
+
   commentInput.value = "";
 };
-
-function timeAgo(date) {
-  if (!date) return "now";
-  const s = (Date.now() - date) / 1000;
-  if (s < 60) return "now";
-  if (s < 3600) return Math.floor(s / 60) + "m ago";
-  if (s < 86400) return Math.floor(s / 3600) + "h ago";
-  return Math.floor(s / 86400) + "d ago";
-}
 </script>
 
+<script type="module"
+  src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js">
+</script>
 
-<script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
 </body>
 </html>
