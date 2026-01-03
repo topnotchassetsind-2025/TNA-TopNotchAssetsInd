@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
    <link rel="icon" type="image/x-icon" href="/logo.ico">
+   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
 <meta charset="UTF-8">
 <title>Upload | TopNotch Assets</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -155,7 +157,7 @@ button{
 
     <input id="name" placeholder="Model Name">
     <input id="modelUrl" placeholder="Model RAW URL (.glb only)">
-    <input id="downloadLink" placeholder="MEGA Download Link">
+    <input id="downloadLink"placeholder="Cloudflare R2 download URL" required/>
     <input id="thumbnail" placeholder="Thumbnail RAW Image URL">
     <input id="category" placeholder="Category (character, weapon, car)">
     <input id="game" placeholder="Game (BloodStrike, Valorant etc)">
@@ -225,29 +227,49 @@ firebase.initializeApp({
   projectId: "top-notch-log-data"
 });
 
-const auth = firebase.auth();
-const db = firebase.firestore();
-
-auth.onAuthStateChanged(user=>{
-  if(!user){
-    location.href="login.html";
-  }else{
-    document.getElementById("userText").innerText =
-      "Logged in as " + user.email;
-    document.getElementById("form").style.display="block";
-  }
+firebase.initializeApp({
+  apiKey: "AIzaSyBy5JEPEcplViq8AkK-_uY8JXU5iHUM6ns",
+  authDomain: "top-notch-log-data.firebaseapp.com",
+  projectId: "top-notch-log-data"
 });
 
-/* ================= UPLOAD MODEL ================= */
-function uploadModel(){
-  const user = auth.currentUser;
-  if(!user){
-    showToast("Login required", "error");
+const auth = firebase.auth();
 
+const ADMIN_EMAILS = [
+  "hrd9011@gmail.com",
+  "gggonetaponetap@gmail.com",
+  "sunnehsunnehjk@gmail.com"
+];
+
+auth.onAuthStateChanged(user => {
+  if (!user) {
+    location.href = "login.html";
     return;
   }
 
-  // ✅ FIXED VARIABLE NAMES
+  if (!ADMIN_EMAILS.includes(user.email)) {
+    alert("You are not authorized to upload models.");
+    location.href = "index.html";
+    return;
+  }
+
+  // ✅ ADMIN PASSED
+  document.getElementById("userText").innerText =
+    "Admin logged in: " + user.email;
+
+  document.getElementById("form").style.display = "block";
+});
+
+
+/* ================= UPLOAD MODEL ================= */
+function uploadModel() {
+  const user = auth.currentUser;
+
+  if (!user || !ADMIN_EMAILS.includes(user.email)) {
+    showToast("Unauthorized access", "error");
+    return;
+  }
+
   const modelName   = document.getElementById("name").value.trim();
   const modelUrlVal = document.getElementById("modelUrl").value.trim();
   const downloadVal = document.getElementById("downloadLink").value.trim();
@@ -256,23 +278,21 @@ function uploadModel(){
   const gameVal     = document.getElementById("game").value.trim();
   const tagsVal     = document.getElementById("tags").value
                         .split(",")
-                        .map(t=>t.trim())
+                        .map(t => t.trim())
                         .filter(Boolean);
 
-  // ✅ VALIDATION
-  if(!modelName || !modelUrlVal || !downloadVal || !thumbVal){
+  /* VALIDATION */
+  if (!modelName || !modelUrlVal || !downloadVal || !thumbVal) {
     showToast("Please fill all required fields", "error");
-
     return;
   }
 
-  if(!modelUrlVal.toLowerCase().endsWith(".glb")){
-   showToast("Only .glb files are allowed", "error");
-
+  if (!modelUrlVal.toLowerCase().endsWith(".glb")) {
+    showToast("Only .glb files are allowed", "error");
     return;
   }
 
-  // ✅ SAVE DIRECTLY TO FIRESTORE (NO BACKEND)
+  /* SAVE MODEL */
   db.collection("models").add({
     name: modelName,
     name_lower: modelName.toLowerCase(),
@@ -283,7 +303,6 @@ function uploadModel(){
     game: gameVal,
     tags: tagsVal,
 
-    status: "approved", // ✅ SIMPLE MODE
     likesCount: 0,
     downloadsCount: 0,
 
@@ -291,23 +310,20 @@ function uploadModel(){
     uploaderEmail: user.email,
     createdAt: firebase.firestore.FieldValue.serverTimestamp()
   })
-  .then(()=>{
+  .then(() => {
     showToast("Model uploaded successfully 🚀", "success");
-
-    document.querySelectorAll("input").forEach(i=>i.value="");
+    document.querySelectorAll("input").forEach(i => i.value = "");
   })
-  .catch(err=>{
+  .catch(err => {
     showToast("Upload failed: " + err.message, "error");
-
   });
 }
 
-
+/* ================= TOAST ================= */
 function showToast(message, type = "success") {
   const toast = document.getElementById("toast");
 
   toast.textContent = message;
-
   toast.style.background =
     type === "error"
       ? "linear-gradient(135deg,#ef4444,#dc2626)"
@@ -319,8 +335,8 @@ function showToast(message, type = "success") {
     toast.style.opacity = "0";
   }, 3000);
 }
-
 </script>
+
 <div id="toast" style="
   position: fixed;
   top: 24px;
