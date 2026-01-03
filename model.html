@@ -136,7 +136,6 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-/* INIT */
 const app = initializeApp({
   apiKey: "AIzaSyBy5JEPEcplViq8AkK-_uY8JXU5iHUM6ns",
   authDomain: "top-notch-log-data.firebaseapp.com",
@@ -146,111 +145,69 @@ const app = initializeApp({
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-/* ELEMENTS */
-const downloadBtn = document.getElementById("downloadBtn");
-const viewer = document.getElementById("viewer");
-
-/* DISABLE INITIALLY */
-downloadBtn.disabled = true;
-
 /* AUTH */
 let currentUser = null;
-onAuthStateChanged(auth, u => currentUser = u);
+onAuthStateChanged(auth, u => {
+  currentUser = u;
+  commentInput.disabled = !u;
+  postBtn.disabled = !u;
+});
 
-/* GET MODEL ID */
+/* MODEL */
 const id = new URLSearchParams(location.search).get("id");
-if (!id) {
-  alert("Invalid model ID");
-  location.href = "models.html";
-}
-
-/* LOAD MODEL */
 const modelRef = doc(db, "models", id);
-const modelSnap = await getDoc(modelRef);
+const snap = await getDoc(modelRef);
 
-if (!modelSnap.exists()) {
+if (!snap.exists()) {
   alert("Model not found");
   location.href = "models.html";
 }
 
-const model = modelSnap.data();
+const model = snap.data();
 
-/* LOAD STORAGE CONFIG */
-const storageRef = doc(db, "settings", "storage");
-const storageSnap = await getDoc(storageRef);
+/* STORAGE SETTINGS */
+const storageSnap = await getDoc(doc(db, "settings", "storage"));
+const r2BaseUrl = storageSnap.data().r2BaseUrl.replace(/\/$/, "");
 
-if (!storageSnap.exists()) {
-  console.error("settings/storage document missing");
-  alert("Storage config missing");
-  throw new Error("storage doc missing");
-}
-
-const storageData = storageSnap.data();
-
-if (!storageData.r2BaseUrl) {
-  console.error("r2BaseUrl field missing", storageData);
-  alert("Storage URL misconfigured");
-  throw new Error("r2BaseUrl missing");
-}
-
-/* CLEAN BASE URL */
-const r2BaseUrl = storageData.r2BaseUrl.replace(/\/$/, "");
-
-/* BUILD URLS */
+/* FINAL URLS */
 const modelUrl = `${r2BaseUrl}/${model.modelFile}`;
 const downloadUrl = `${r2BaseUrl}/${model.downloadFile}`;
 
 /* VIEWER */
 viewer.src = modelUrl;
-document.getElementById("modelName").innerText = model.name;
-document.getElementById("modelMeta").innerText =
-  `${model.game || ""} · ${model.category || ""}`;
+modelName.innerText = model.name;
+modelMeta.innerText = `${model.game} · ${model.category}`;
 
 /* ENABLE DOWNLOAD */
 downloadBtn.disabled = false;
-
-/* DOWNLOAD CLICK */
 downloadBtn.onclick = async () => {
-  try {
-    await updateDoc(modelRef, {
-      downloadsCount: increment(1)
-    });
-    window.open(downloadUrl, "_blank");
-  } catch (err) {
-    console.error("Download failed:", err);
-    alert("Download failed");
-  }
+  await updateDoc(modelRef, {
+    downloadsCount: increment(1)
+  });
+  window.open(downloadUrl, "_blank");
 };
 
 /* COMMENTS */
-const commentsRef = collection(db, "models", id, "comments");
-const q = query(commentsRef, orderBy("createdAt", "desc"));
+const q = query(
+  collection(db, "models", id, "comments"),
+  orderBy("createdAt", "desc")
+);
 
 onSnapshot(q, snap => {
   commentList.innerHTML = "";
   snap.forEach(d => {
     const c = d.data();
-    commentList.innerHTML += `
-      <div class="comment">
-        <b>${c.userEmail}</b>
-        <p>${c.text}</p>
-      </div>
-    `;
+    commentList.innerHTML += `<div class="comment"><b>${c.userEmail}</b><p>${c.text}</p></div>`;
   });
 });
 
-/* POST COMMENT */
 postBtn.onclick = async () => {
   if (!currentUser) return;
-  const text = commentInput.value.trim();
-  if (!text) return;
-
-  await addDoc(commentsRef, {
-    text,
+  await addDoc(collection(db, "models", id, "comments"), {
+    text: commentInput.value,
     userEmail: currentUser.email,
     createdAt: serverTimestamp()
   });
-
   commentInput.value = "";
 };
 </script>
@@ -262,3 +219,4 @@ postBtn.onclick = async () => {
 
 </body>
 </html>
+
