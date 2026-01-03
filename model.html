@@ -1,133 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<link rel="icon" href="/logo.ico">
-<meta charset="UTF-8">
-<title>Model Preview | TopNotch Assets</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<style>
-html,body{
-  margin:0;
-  background:#000;
-  color:#fff;
-  font-family:Inter,system-ui,sans-serif
-}
-
-.viewer{height:75vh}
-
-.info-bar{
-  height:90px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  padding:0 32px;
-  background:#020617;
-  border-top:1px solid rgba(255,255,255,.08)
-}
-
-#downloadBtn{
-  padding:14px 36px;
-  border-radius:999px;
-  border:none;
-  font-weight:700;
-  cursor:pointer;
-  background:linear-gradient(90deg,#00eaff,#6f7bff);
-  color:#000
-}
-
-#downloadBtn:disabled{
-  opacity:.6;
-  cursor:not-allowed;
-}
-
-.comments{
-  max-width:900px;
-  margin:40px auto;
-  padding:0 20px
-}
-
-textarea{
-  width:100%;
-  padding:14px;
-  border-radius:12px;
-  background:#020617;
-  border:1px solid rgba(255,255,255,.1);
-  color:#fff;
-  margin-bottom:10px
-}
-
-button{
-  padding:12px 20px;
-  border-radius:10px;
-  border:none;
-  cursor:pointer;
-  background:#6366f1;
-  color:#fff
-}
-
-.comment{
-  background:#020617;
-  border:1px solid rgba(255,255,255,.08);
-  border-radius:14px;
-  padding:16px;
-  margin-bottom:14px
-}
-
-.comment-head{
-  display:flex;
-  justify-content:space-between;
-  align-items:center
-}
-
-.comment-user{
-  display:flex;
-  gap:8px;
-  align-items:center
-}
-
-.admin-badge{
-  font-size:11px;
-  padding:3px 8px;
-  border-radius:999px;
-  background:linear-gradient(135deg,#facc15,#f59e0b,#d97706);
-  color:#000;
-  font-weight:700
-}
-</style>
-</head>
-
-<body>
-
-<!-- ================= VIEWER ================= -->
-<div class="viewer">
-  <model-viewer id="viewer"
-    camera-controls
-    auto-rotate
-    style="width:100%;height:100%">
-  </model-viewer>
-</div>
-
-<!-- ================= INFO BAR ================= -->
-<div class="info-bar">
-  <div>
-    <h3 id="modelName"></h3>
-    <p id="modelMeta"></p>
-  </div>
-  <button id="downloadBtn" disabled>Download</button>
-</div>
-
-<!-- ================= COMMENTS ================= -->
-<div class="comments">
-  <h2>Comments</h2>
-
-  <textarea id="commentInput" placeholder="Login to comment" disabled></textarea>
-  <button id="postBtn" disabled>Post</button>
-
-  <div id="commentList"></div>
-</div>
-
-<!-- ================= FIREBASE ================= -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
@@ -136,7 +6,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-/* ================= INIT ================= */
+/* INIT */
 const app = initializeApp({
   apiKey: "AIzaSyBy5JEPEcplViq8AkK-_uY8JXU5iHUM6ns",
   authDomain: "top-notch-log-data.firebaseapp.com",
@@ -146,29 +16,25 @@ const app = initializeApp({
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-/* ================= ADMIN LIST ================= */
-const ADMIN_EMAILS = [
-  "hrd9011@gmail.com",
-  "gggonetaponetap@gmail.com",
-  "sunnehsunnehjk@gmail.com"
-];
+/* ELEMENTS */
+const downloadBtn = document.getElementById("downloadBtn");
+const viewer = document.getElementById("viewer");
 
-/* ================= AUTH ================= */
+/* DISABLE INITIALLY */
+downloadBtn.disabled = true;
+
+/* AUTH */
 let currentUser = null;
+onAuthStateChanged(auth, u => currentUser = u);
 
-onAuthStateChanged(auth, user => {
-  currentUser = user;
-  commentInput.disabled = !user;
-  postBtn.disabled = !user;
-});
-
-/* ================= GET MODEL ================= */
+/* GET MODEL ID */
 const id = new URLSearchParams(location.search).get("id");
 if (!id) {
-  alert("Invalid model");
+  alert("Invalid model ID");
   location.href = "models.html";
 }
 
+/* LOAD MODEL */
 const modelRef = doc(db, "models", id);
 const modelSnap = await getDoc(modelRef);
 
@@ -179,28 +45,41 @@ if (!modelSnap.exists()) {
 
 const model = modelSnap.data();
 
-/* ================= GET STORAGE SETTINGS ================= */
-const settingsSnap = await getDoc(doc(db, "settings", "storage"));
-if (!settingsSnap.exists()) {
-  alert("Storage settings missing");
-  throw new Error("settings/storage missing");
+/* LOAD STORAGE CONFIG */
+const storageRef = doc(db, "settings", "storage");
+const storageSnap = await getDoc(storageRef);
+
+if (!storageSnap.exists()) {
+  console.error("settings/storage document missing");
+  alert("Storage config missing");
+  throw new Error("storage doc missing");
 }
 
-const r2BaseUrl = settingsSnap.data().r2BaseUrl.replace(/\/$/, "");
+const storageData = storageSnap.data();
 
-/* ================= BUILD FILE URLS ================= */
+if (!storageData.r2BaseUrl) {
+  console.error("r2BaseUrl field missing", storageData);
+  alert("Storage URL misconfigured");
+  throw new Error("r2BaseUrl missing");
+}
+
+/* CLEAN BASE URL */
+const r2BaseUrl = storageData.r2BaseUrl.replace(/\/$/, "");
+
+/* BUILD URLS */
 const modelUrl = `${r2BaseUrl}/${model.modelFile}`;
 const downloadUrl = `${r2BaseUrl}/${model.downloadFile}`;
 
-/* ================= VIEWER ================= */
+/* VIEWER */
 viewer.src = modelUrl;
-modelName.innerText = model.name;
-modelMeta.innerText = `${model.game || ""} · ${model.category || ""}`;
+document.getElementById("modelName").innerText = model.name;
+document.getElementById("modelMeta").innerText =
+  `${model.game || ""} · ${model.category || ""}`;
 
-/* ✅ ENABLE DOWNLOAD BUTTON (THIS WAS MISSING) */
+/* ENABLE DOWNLOAD */
 downloadBtn.disabled = false;
 
-/* ================= DOWNLOAD ================= */
+/* DOWNLOAD CLICK */
 downloadBtn.onclick = async () => {
   try {
     await updateDoc(modelRef, {
@@ -208,41 +87,31 @@ downloadBtn.onclick = async () => {
     });
     window.open(downloadUrl, "_blank");
   } catch (err) {
-    console.error(err);
+    console.error("Download failed:", err);
     alert("Download failed");
   }
 };
 
-/* ================= COMMENTS ================= */
+/* COMMENTS */
 const commentsRef = collection(db, "models", id, "comments");
 const q = query(commentsRef, orderBy("createdAt", "desc"));
 
 onSnapshot(q, snap => {
   commentList.innerHTML = "";
-
-  snap.forEach(docSnap => {
-    const c = docSnap.data();
-    const isAdmin = ADMIN_EMAILS.includes(c.userEmail);
-
+  snap.forEach(d => {
+    const c = d.data();
     commentList.innerHTML += `
       <div class="comment">
-        <div class="comment-head">
-          <div class="comment-user">
-            <b>${c.userEmail}</b>
-            ${isAdmin ? `<span class="admin-badge">ADMIN</span>` : ""}
-          </div>
-          <span>${c.createdAt ? new Date(c.createdAt.seconds*1000).toLocaleString() : ""}</span>
-        </div>
+        <b>${c.userEmail}</b>
         <p>${c.text}</p>
       </div>
     `;
   });
 });
 
-/* ================= POST COMMENT ================= */
+/* POST COMMENT */
 postBtn.onclick = async () => {
   if (!currentUser) return;
-
   const text = commentInput.value.trim();
   if (!text) return;
 
@@ -255,10 +124,3 @@ postBtn.onclick = async () => {
   commentInput.value = "";
 };
 </script>
-
-<script type="module"
-  src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js">
-</script>
-
-</body>
-</html>
