@@ -261,13 +261,18 @@ button{
 
 <!-- ================= VIEWER ================= -->
 <div class="viewer">
-  <model-viewer id="viewer"
-    camera-controls
-    auto-rotate
-    exposure="1"
-    shadow-intensity="1"
-    style="width:100%;height:100%">
-  </model-viewer>
+ <model-viewer
+  id="viewer"
+  camera-controls
+  auto-rotate
+  loading="lazy"
+  reveal="interaction"
+  environment-image="neutral"
+  shadow-intensity="1"
+  poster="/loading.webp"
+  style="width:100%;height:100%;background:#000">
+</model-viewer>
+
 </div>
 
 <!-- ================= INFO BAR ================= -->
@@ -536,5 +541,6 @@ window.loadReplies = (commentId) => {
 
 </body>
 </html>
+
 
 
