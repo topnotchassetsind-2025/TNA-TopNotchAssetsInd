@@ -261,17 +261,16 @@ button{
 
 <!-- ================= VIEWER ================= -->
 <div class="viewer">
- <model-viewer
+<model-viewer
   id="viewer"
   camera-controls
   auto-rotate
   loading="lazy"
-  reveal="interaction"
+  reveal="auto"
   environment-image="neutral"
-  shadow-intensity="1"
-  poster="/loading.webp"
   style="width:100%;height:100%;background:#000">
 </model-viewer>
+
 
 </div>
 
@@ -541,6 +540,7 @@ window.loadReplies = (commentId) => {
 
 </body>
 </html>
+
 
 
 
