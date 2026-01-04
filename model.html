@@ -334,33 +334,13 @@ const commentInput = document.getElementById("commentInput");
 const postBtn = document.getElementById("postBtn");
 const commentList = document.getElementById("commentList");
 
-/* ================= AUTH ================= */
+/* ================= STATE ================= */
 let currentUser = null;
+let liked = false;
+let likeCount = 0;
 let likeDocRef = null;
 
-onAuthStateChanged(auth, async user => {
-  currentUser = user;
-
-  // 🔐 Comment UI control
-  if (user) {
-    commentInput.disabled = false;
-    postBtn.disabled = false;
-    commentInput.placeholder = "Write a comment...";
-  } else {
-    commentInput.disabled = true;
-    postBtn.disabled = true;
-    commentInput.placeholder = "Login to comment";
-  }
-
-  // ❤️ Like state restore
-  if (user && likeDocRef) {
-    const snap = await getDoc(likeDocRef);
-    liked = snap.exists();
-    likeBtn.classList.toggle("liked", liked);
-  }
-});
-
-/* ================= MODEL ================= */
+/* ================= LOAD MODEL ================= */
 const id = new URLSearchParams(location.search).get("id");
 if (!id) location.href = "models.html";
 
@@ -369,6 +349,7 @@ const modelSnap = await getDoc(modelRef);
 if (!modelSnap.exists()) location.href = "models.html";
 
 const model = modelSnap.data();
+likeCount = model.likesCount || 0;
 
 /* ================= STORAGE ================= */
 const storageSnap = await getDoc(doc(db, "settings", "storage"));
@@ -385,45 +366,55 @@ downloadBtn.onclick = async () => {
   window.open(`${r2Base}/${model.downloadFile}`, "_blank");
 };
 
-/* ================= LIKE SYSTEM ================= */
-let liked = false;
-let likeCount = model.likesCount || 0;
-
-// show initial count
-likeBtn.innerText = `❤️ ${likeCount}`;
-
-let likeDocRef = null;
-
-// wait for auth
+/* ================= AUTH ================= */
 onAuthStateChanged(auth, async user => {
   currentUser = user;
 
-  if (!user) return;
+  // comments UI
+  if (user) {
+    commentInput.disabled = false;
+    postBtn.disabled = false;
+    commentInput.placeholder = "Write a comment...";
+  } else {
+    commentInput.disabled = true;
+    postBtn.disabled = true;
+    commentInput.placeholder = "Login to comment";
+  }
 
-  likeDocRef = doc(db, "models", id, "likes", user.uid);
+  // like state
+  if (user) {
+    likeDocRef = doc(db, "models", id, "likes", user.uid);
+    const snap = await getDoc(likeDocRef);
+    liked = snap.exists();
+  } else {
+    liked = false;
+  }
 
-  const snap = await getDoc(likeDocRef);
-  liked = snap.exists();
-
-  if (liked) likeBtn.classList.add("liked");
+  renderLike();
 });
 
-// toggle like
+/* ================= LIKE UI ================= */
+function renderLike() {
+  likeBtn.innerText = `❤️ ${likeCount}`;
+  likeBtn.classList.toggle("liked", liked);
+}
+
+/* ================= LIKE TOGGLE (STABLE) ================= */
 likeBtn.onclick = async () => {
-  if (!currentUser || !likeDocRef) {
+  if (!currentUser) {
     alert("Login required");
     return;
   }
 
-  // 🔥 instant UI update
+  const wasLiked = liked;
+
+  // instant UI
   liked = !liked;
   likeCount += liked ? 1 : -1;
-
-  likeBtn.innerText = `❤️ ${likeCount}`;
-  likeBtn.classList.toggle("liked", liked);
+  renderLike();
 
   try {
-    if (liked) {
+    if (!wasLiked) {
       await setDoc(likeDocRef, { likedAt: serverTimestamp() });
       await updateDoc(modelRef, { likesCount: increment(1) });
     } else {
@@ -431,12 +422,11 @@ likeBtn.onclick = async () => {
       await updateDoc(modelRef, { likesCount: increment(-1) });
     }
   } catch (err) {
-    // rollback if failed
-    liked = !liked;
+    // rollback
+    liked = wasLiked;
     likeCount += liked ? 1 : -1;
-    likeBtn.innerText = `❤️ ${likeCount}`;
-    likeBtn.classList.toggle("liked", liked);
-    console.error("Like failed:", err);
+    renderLike();
+    console.error("Like error:", err);
   }
 };
 
@@ -481,27 +471,20 @@ onSnapshot(query(commentsRef, orderBy("createdAt", "desc")), snap => {
 
 /* ================= POST COMMENT ================= */
 postBtn.onclick = async () => {
-  if (!currentUser) {
-    alert("Login required");
-    return;
-  }
-
+  if (!currentUser) return;
   const text = commentInput.value.trim();
   if (!text) return;
 
-  try {
-    await addDoc(commentsRef, {
-      text,
-      userEmail: currentUser.email,
-      createdAt: serverTimestamp()
-    });
-    commentInput.value = "";
-  } catch (err) {
-    console.error("Comment failed:", err);
-  }
+  await addDoc(commentsRef, {
+    text,
+    userEmail: currentUser.email,
+    createdAt: serverTimestamp()
+  });
+
+  commentInput.value = "";
 };
 
-/* ================= SEND REPLY ================= */
+/* ================= REPLIES ================= */
 window.postReply = async (commentId) => {
   if (!currentUser) return;
 
@@ -520,7 +503,6 @@ window.postReply = async (commentId) => {
   input.value = "";
 };
 
-/* ================= LOAD REPLIES ================= */
 window.loadReplies = (commentId) => {
   const repliesRef = collection(db, "models", id, "comments", commentId, "replies");
 
@@ -554,4 +536,5 @@ window.loadReplies = (commentId) => {
 
 </body>
 </html>
+
 
