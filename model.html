@@ -61,10 +61,11 @@ html,body{
   font-weight:600;
 }
 
-#likeBtn.liked{
-  background:#ef4444;
-  border-color:#ef4444;
+#likeBtn.liked {
+  background: linear-gradient(90deg,#ff4d4d,#ff8a8a);
+  color:#000;
 }
+
 
 
 /* ===== COMMENTS ===== */
@@ -302,7 +303,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import {
   getFirestore, doc, getDoc, updateDoc, increment,
   collection, addDoc, query, orderBy, onSnapshot,
-  serverTimestamp, setDoc
+  serverTimestamp, setDoc, deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
@@ -323,14 +324,23 @@ const app = initializeApp({
 const db = getFirestore(app);
 const auth = getAuth(app);
 
+/* ================= ELEMENTS ================= */
+const viewer = document.getElementById("viewer");
+const modelName = document.getElementById("modelName");
+const modelMeta = document.getElementById("modelMeta");
+const downloadBtn = document.getElementById("downloadBtn");
+const likeBtn = document.getElementById("likeBtn");
+const commentInput = document.getElementById("commentInput");
+const postBtn = document.getElementById("postBtn");
+const commentList = document.getElementById("commentList");
+
 /* ================= AUTH ================= */
 let currentUser = null;
-onAuthStateChanged(auth, user => {
-  currentUser = user;
-});
 
 /* ================= MODEL ================= */
 const id = new URLSearchParams(location.search).get("id");
+if (!id) location.href = "models.html";
+
 const modelRef = doc(db, "models", id);
 const modelSnap = await getDoc(modelRef);
 if (!modelSnap.exists()) location.href = "models.html";
@@ -341,6 +351,7 @@ const model = modelSnap.data();
 const storageSnap = await getDoc(doc(db,"settings","storage"));
 const r2Base = storageSnap.data().r2BaseUrl.replace(/\/$/,"");
 
+/* ================= PREVIEW ================= */
 viewer.src = `${r2Base}/${model.modelFile}`;
 modelName.innerText = model.name;
 modelMeta.innerText = `${model.game} · ${model.category}`;
@@ -351,103 +362,59 @@ downloadBtn.onclick = async () => {
   window.open(`${r2Base}/${model.downloadFile}`, "_blank");
 };
 
-/* ================= LIKES (ONE USER = ONE LIKE) ================= */
 /* ================= LIKE SYSTEM ================= */
-
-const likeBtn = document.getElementById("likeBtn");
-
-// local state
 let liked = false;
 let likeCount = model.likesCount || 0;
-
-// initial UI
 likeBtn.innerText = `❤️ ${likeCount}`;
 
-/* ===== CHECK IF USER ALREADY LIKED ===== */
-onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, async user => {
+  currentUser = user;
+  commentInput.disabled = !user;
+  postBtn.disabled = !user;
+
   if (!user) return;
 
-  const likeRef = doc(db, "models", id, "likes", user.uid);
-  const likeSnap = await getDoc(likeRef);
-
+  const likeDocRef = doc(db,"models",id,"likes",user.uid);
+  const likeSnap = await getDoc(likeDocRef);
   liked = likeSnap.exists();
 
-  if (liked) {
-    likeBtn.classList.add("liked");
-  }
-});
+  if (liked) likeBtn.classList.add("liked");
 
-/* ===== LIKE / UNLIKE TOGGLE ===== */
-likeBtn.onclick = async () => {
-  if (!currentUser) {
-    alert("Login required");
-    return;
-  }
+  likeBtn.onclick = async () => {
+    liked = !liked;
+    likeCount += liked ? 1 : -1;
 
-  const likeRef = doc(db, "models", id, "likes", currentUser.uid);
-
-  /* -------- UNLIKE -------- */
-  if (liked) {
-    liked = false;
-    likeCount--;
-
-    // instant UI update
-    likeBtn.classList.remove("liked");
     likeBtn.innerText = `❤️ ${likeCount}`;
+    likeBtn.classList.toggle("liked", liked);
 
     try {
-      await deleteDoc(likeRef);
-      await updateDoc(modelRef, {
-        likesCount: increment(-1)
-      });
-    } catch (err) {
-      // rollback if failed
-      liked = true;
-      likeCount++;
-      likeBtn.classList.add("liked");
+      if (liked) {
+        await setDoc(likeDocRef,{ likedAt: serverTimestamp() });
+        await updateDoc(modelRef,{ likesCount: increment(1) });
+      } else {
+        await deleteDoc(likeDocRef);
+        await updateDoc(modelRef,{ likesCount: increment(-1) });
+      }
+    } catch (e) {
+      // rollback
+      liked = !liked;
+      likeCount += liked ? 1 : -1;
       likeBtn.innerText = `❤️ ${likeCount}`;
-      console.error(err);
+      likeBtn.classList.toggle("liked", liked);
+      console.error(e);
     }
+  };
+});
 
-    return;
-  }
-
-  /* -------- LIKE -------- */
-  liked = true;
-  likeCount++;
-
-  // instant UI update
-  likeBtn.classList.add("liked");
-  likeBtn.innerText = `❤️ ${likeCount}`;
-
-  try {
-    await setDoc(likeRef, {
-      likedAt: serverTimestamp()
-    });
-
-    await updateDoc(modelRef, {
-      likesCount: increment(1)
-    });
-  } catch (err) {
-    // rollback if failed
-    liked = false;
-    likeCount--;
-    likeBtn.classList.remove("liked");
-    likeBtn.innerText = `❤️ ${likeCount}`;
-    console.error(err);
-  }
-};
-
-
-/* ================= COMMENTS + REPLIES ================= */
+/* ================= COMMENTS ================= */
 const commentsRef = collection(db,"models",id,"comments");
 
-onSnapshot(query(commentsRef,orderBy("createdAt","desc")), snap => {
+onSnapshot(query(commentsRef, orderBy("createdAt","desc")), snap => {
   commentList.innerHTML = "";
 
-  snap.forEach(cDoc => {
-    const c = cDoc.data();
-    const commentId = cDoc.id;
+  snap.forEach(docSnap => {
+    const c = docSnap.data();
+    const commentId = docSnap.id;
     const isAdmin = ADMIN_EMAILS.includes(c.userEmail);
 
     commentList.innerHTML += `
@@ -461,80 +428,83 @@ onSnapshot(query(commentsRef,orderBy("createdAt","desc")), snap => {
 
         <p>${c.text}</p>
 
-        <button class="reply-btn" data-id="${commentId}">Reply</button>
+        <div class="reply-box">
+          <input
+            class="reply-input"
+            id="reply-input-${commentId}"
+            placeholder="Write a reply..."
+          />
+          <button onclick="sendReply('${commentId}')">Send</button>
+        </div>
 
-       <div class="reply-box">
-  <input class="reply-input" placeholder="Write a reply..." id="reply-input-${commentId}">
-  <button class="reply-send" onclick="sendReply('${commentId}')">Send</button>
-</div>
-
-<div class="replies" id="replies-${commentId}"></div>
-
+        <div class="replies" id="replies-${commentId}"></div>
       </div>
     `;
 
     loadReplies(commentId);
   });
-
-  document.querySelectorAll(".reply-btn").forEach(btn=>{
-    btn.onclick = ()=>{
-      const id = btn.dataset.id;
-      document.getElementById(`reply-box-${id}`).style.display = "block";
-    };
-  });
 });
 
-window.postReply = async (commentId)=>{
-  if(!currentUser) return;
+/* ================= SEND REPLY ================= */
+window.sendReply = async (commentId) => {
+  if (!currentUser) return;
+
   const input = document.getElementById(`reply-input-${commentId}`);
-  if(!input.value.trim()) return;
+  const text = input.value.trim();
+  if (!text) return;
 
   await addDoc(
     collection(db,"models",id,"comments",commentId,"replies"),
     {
-      text: input.value,
+      text,
       userEmail: currentUser.email,
       createdAt: serverTimestamp()
     }
   );
 
-  input.value="";
+  input.value = "";
 };
 
 /* ================= LOAD REPLIES ================= */
-function loadReplies(commentId){
-  const ref = collection(db,"models",id,"comments",commentId,"replies");
-  onSnapshot(query(ref,orderBy("createdAt","asc")), snap=>{
+window.loadReplies = (commentId) => {
+  const repliesRef = collection(db,"models",id,"comments",commentId,"replies");
+
+  onSnapshot(query(repliesRef, orderBy("createdAt")), snap => {
     const box = document.getElementById(`replies-${commentId}`);
-    box.innerHTML="";
-    snap.forEach(r=>{
-      const d=r.data();
-      const admin = ADMIN_EMAILS.includes(d.userEmail);
-      box.innerHTML+=`
+    box.innerHTML = "";
+
+    snap.forEach(rDoc => {
+      const r = rDoc.data();
+      const isAdmin = ADMIN_EMAILS.includes(r.userEmail);
+
+      box.innerHTML += `
         <div class="reply">
-          <b>${d.userEmail}</b>
-          ${admin?`<span class="admin-badge">ADMIN</span>`:""}
-          <p>${d.text}</p>
+          <b>${r.userEmail}</b>
+          ${isAdmin ? `<span class="admin-badge">ADMIN</span>` : ""}
+          <p>${r.text}</p>
         </div>
       `;
     });
   });
-}
+};
 
 /* ================= POST COMMENT ================= */
-postBtn.onclick = async ()=>{
-  if(!currentUser) return;
-  if(!commentInput.value.trim()) return;
+postBtn.onclick = async () => {
+  if (!currentUser) return;
+
+  const text = commentInput.value.trim();
+  if (!text) return;
 
   await addDoc(commentsRef,{
-    text:commentInput.value,
-    userEmail:currentUser.email,
-    createdAt:serverTimestamp()
+    text,
+    userEmail: currentUser.email,
+    createdAt: serverTimestamp()
   });
 
-  commentInput.value="";
+  commentInput.value = "";
 };
 </script>
+
 
 
 
