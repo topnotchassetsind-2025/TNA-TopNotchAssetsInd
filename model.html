@@ -388,39 +388,50 @@ downloadBtn.onclick = async () => {
 /* ================= LIKE SYSTEM ================= */
 let liked = false;
 let likeCount = model.likesCount || 0;
+
+// show initial count
 likeBtn.innerText = `❤️ ${likeCount}`;
 
-likeDocRef = currentUser
-  ? doc(db, "models", id, "likes", currentUser.uid)
-  : null;
+let likeDocRef = null;
 
+// wait for auth
+onAuthStateChanged(auth, async user => {
+  currentUser = user;
+
+  if (!user) return;
+
+  likeDocRef = doc(db, "models", id, "likes", user.uid);
+
+  const snap = await getDoc(likeDocRef);
+  liked = snap.exists();
+
+  if (liked) likeBtn.classList.add("liked");
+});
+
+// toggle like
 likeBtn.onclick = async () => {
-  if (!currentUser) {
+  if (!currentUser || !likeDocRef) {
     alert("Login required");
     return;
   }
 
-  // ⚡ Instant UI
+  // 🔥 instant UI update
   liked = !liked;
   likeCount += liked ? 1 : -1;
+
   likeBtn.innerText = `❤️ ${likeCount}`;
   likeBtn.classList.toggle("liked", liked);
 
   try {
     if (liked) {
-      await setDoc(
-        doc(db, "models", id, "likes", currentUser.uid),
-        { likedAt: serverTimestamp() }
-      );
+      await setDoc(likeDocRef, { likedAt: serverTimestamp() });
       await updateDoc(modelRef, { likesCount: increment(1) });
     } else {
-      await deleteDoc(
-        doc(db, "models", id, "likes", currentUser.uid)
-      );
+      await deleteDoc(likeDocRef);
       await updateDoc(modelRef, { likesCount: increment(-1) });
     }
   } catch (err) {
-    // rollback
+    // rollback if failed
     liked = !liked;
     likeCount += liked ? 1 : -1;
     likeBtn.innerText = `❤️ ${likeCount}`;
@@ -543,3 +554,4 @@ window.loadReplies = (commentId) => {
 
 </body>
 </html>
+
