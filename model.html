@@ -336,6 +336,29 @@ const commentList = document.getElementById("commentList");
 
 /* ================= AUTH ================= */
 let currentUser = null;
+let likeDocRef = null;
+
+onAuthStateChanged(auth, async user => {
+  currentUser = user;
+
+  // 🔐 Comment UI control
+  if (user) {
+    commentInput.disabled = false;
+    postBtn.disabled = false;
+    commentInput.placeholder = "Write a comment...";
+  } else {
+    commentInput.disabled = true;
+    postBtn.disabled = true;
+    commentInput.placeholder = "Login to comment";
+  }
+
+  // ❤️ Like state restore
+  if (user && likeDocRef) {
+    const snap = await getDoc(likeDocRef);
+    liked = snap.exists();
+    likeBtn.classList.toggle("liked", liked);
+  }
+});
 
 /* ================= MODEL ================= */
 const id = new URLSearchParams(location.search).get("id");
@@ -348,8 +371,8 @@ if (!modelSnap.exists()) location.href = "models.html";
 const model = modelSnap.data();
 
 /* ================= STORAGE ================= */
-const storageSnap = await getDoc(doc(db,"settings","storage"));
-const r2Base = storageSnap.data().r2BaseUrl.replace(/\/$/,"");
+const storageSnap = await getDoc(doc(db, "settings", "storage"));
+const r2Base = storageSnap.data().r2BaseUrl.replace(/\/$/, "");
 
 /* ================= PREVIEW ================= */
 viewer.src = `${r2Base}/${model.modelFile}`;
@@ -363,54 +386,41 @@ downloadBtn.onclick = async () => {
 };
 
 /* ================= LIKE SYSTEM ================= */
-
-
 let liked = false;
 let likeCount = model.likesCount || 0;
-
-// show initial count
 likeBtn.innerText = `❤️ ${likeCount}`;
 
-let likeDocRef = null;
+likeDocRef = currentUser
+  ? doc(db, "models", id, "likes", currentUser.uid)
+  : null;
 
-// wait for auth
-onAuthStateChanged(auth, async user => {
-  currentUser = user;
-
-  if (!user) return;
-
-  likeDocRef = doc(db, "models", id, "likes", user.uid);
-
-  const snap = await getDoc(likeDocRef);
-  liked = snap.exists();
-
-  if (liked) likeBtn.classList.add("liked");
-});
-
-// toggle like
 likeBtn.onclick = async () => {
-  if (!currentUser || !likeDocRef) {
+  if (!currentUser) {
     alert("Login required");
     return;
   }
 
-  // 🔥 instant UI update
+  // ⚡ Instant UI
   liked = !liked;
   likeCount += liked ? 1 : -1;
-
   likeBtn.innerText = `❤️ ${likeCount}`;
   likeBtn.classList.toggle("liked", liked);
 
   try {
     if (liked) {
-      await setDoc(likeDocRef, { likedAt: serverTimestamp() });
+      await setDoc(
+        doc(db, "models", id, "likes", currentUser.uid),
+        { likedAt: serverTimestamp() }
+      );
       await updateDoc(modelRef, { likesCount: increment(1) });
     } else {
-      await deleteDoc(likeDocRef);
+      await deleteDoc(
+        doc(db, "models", id, "likes", currentUser.uid)
+      );
       await updateDoc(modelRef, { likesCount: increment(-1) });
     }
   } catch (err) {
-    // rollback if failed
+    // rollback
     liked = !liked;
     likeCount += liked ? 1 : -1;
     likeBtn.innerText = `❤️ ${likeCount}`;
@@ -419,11 +429,10 @@ likeBtn.onclick = async () => {
   }
 };
 
-
 /* ================= COMMENTS ================= */
-const commentsRef = collection(db,"models",id,"comments");
+const commentsRef = collection(db, "models", id, "comments");
 
-onSnapshot(query(commentsRef, orderBy("createdAt","desc")), snap => {
+onSnapshot(query(commentsRef, orderBy("createdAt", "desc")), snap => {
   commentList.innerHTML = "";
 
   snap.forEach(docSnap => {
@@ -442,15 +451,14 @@ onSnapshot(query(commentsRef, orderBy("createdAt","desc")), snap => {
 
         <p>${c.text}</p>
 
-              <div class="reply-box">
-        <input
-          class="reply-input"
-          id="reply-input-${commentId}"
-          placeholder="Write a reply..."
-        />
-        <button onclick="postReply('${commentId}')">Send</button>
-      </div>
-
+        <div class="reply-box">
+          <input
+            class="reply-input"
+            id="reply-input-${commentId}"
+            placeholder="Write a reply..."
+          />
+          <button onclick="postReply('${commentId}')">Send</button>
+        </div>
 
         <div class="replies" id="replies-${commentId}"></div>
       </div>
@@ -459,6 +467,28 @@ onSnapshot(query(commentsRef, orderBy("createdAt","desc")), snap => {
     loadReplies(commentId);
   });
 });
+
+/* ================= POST COMMENT ================= */
+postBtn.onclick = async () => {
+  if (!currentUser) {
+    alert("Login required");
+    return;
+  }
+
+  const text = commentInput.value.trim();
+  if (!text) return;
+
+  try {
+    await addDoc(commentsRef, {
+      text,
+      userEmail: currentUser.email,
+      createdAt: serverTimestamp()
+    });
+    commentInput.value = "";
+  } catch (err) {
+    console.error("Comment failed:", err);
+  }
+};
 
 /* ================= SEND REPLY ================= */
 window.postReply = async (commentId) => {
@@ -479,10 +509,9 @@ window.postReply = async (commentId) => {
   input.value = "";
 };
 
-
 /* ================= LOAD REPLIES ================= */
 window.loadReplies = (commentId) => {
-  const repliesRef = collection(db,"models",id,"comments",commentId,"replies");
+  const repliesRef = collection(db, "models", id, "comments", commentId, "replies");
 
   onSnapshot(query(repliesRef, orderBy("createdAt")), snap => {
     const box = document.getElementById(`replies-${commentId}`);
@@ -502,23 +531,8 @@ window.loadReplies = (commentId) => {
     });
   });
 };
-
-/* ================= POST COMMENT ================= */
-postBtn.onclick = async () => {
-  if (!currentUser) return;
-
-  const text = commentInput.value.trim();
-  if (!text) return;
-
-  await addDoc(commentsRef,{
-    text,
-    userEmail: currentUser.email,
-    createdAt: serverTimestamp()
-  });
-
-  commentInput.value = "";
-};
 </script>
+
 
 
 
