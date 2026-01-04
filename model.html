@@ -52,14 +52,20 @@ html,body{
 }
 
 #likeBtn{
-  background:#111827;
-  color:#fff;
+  background:#020617;
   border:1px solid rgba(255,255,255,.15);
+  padding:8px 14px;
+  border-radius:999px;
+  cursor:pointer;
+  color:#fff;
+  font-weight:600;
 }
-.like-btn.liked {
-  background: linear-gradient(135deg,#ff4d4d,#ff7b7b);
-  color:#000;
+
+#likeBtn.liked{
+  background:#ef4444;
+  border-color:#ef4444;
 }
+
 
 /* ===== COMMENTS ===== */
 .comments{
@@ -124,6 +130,58 @@ button{
   border-radius:10px;
   border:1px solid rgba(255,255,255,.08)
 }
+
+/* ===== REPLY UI ===== */
+.reply-box{
+  display:flex;
+  gap:10px;
+  margin-top:10px;
+}
+
+.reply-input{
+  flex:1;
+  padding:10px 14px;
+  border-radius:12px;
+  background:#020617;
+  border:1px solid rgba(255,255,255,.15);
+  color:#fff;
+  font-size:14px;
+  outline:none;
+}
+
+.reply-input::placeholder{
+  color:rgba(255,255,255,.4);
+}
+
+.reply-send{
+  padding:10px 18px;
+  border-radius:12px;
+  border:none;
+  cursor:pointer;
+  font-weight:600;
+  background:#6366f1;
+  color:#fff;
+}
+
+.reply-send:hover{
+  background:#4f46e5;
+}
+
+.replies{
+  margin-top:12px;
+  padding-left:16px;
+  border-left:2px solid rgba(255,255,255,.08);
+}
+
+.reply{
+  margin-top:10px;
+  background:#020617;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  padding:10px 14px;
+  font-size:14px;
+}
+
 
 /* HOME BUTTON – PREMIUM */
 .home-btn{
@@ -219,7 +277,7 @@ button{
   </div>
 
   <div class="actions">
-    <a href="index.html" class="home-btn">
+    <a href="models.html" class="home-btn">
   <span class="home-icon">←</span>
   <span class="home-text">Home</span>
 </a>
@@ -294,33 +352,92 @@ downloadBtn.onclick = async () => {
 };
 
 /* ================= LIKES (ONE USER = ONE LIKE) ================= */
+/* ================= LIKE SYSTEM ================= */
+
 const likeBtn = document.getElementById("likeBtn");
+
+// local state
 let liked = false;
+let likeCount = model.likesCount || 0;
 
-if (currentUser) {
-  const likeDoc = await getDoc(doc(db,"models",id,"likes",currentUser.uid));
-  liked = likeDoc.exists();
-}
+// initial UI
+likeBtn.innerText = `❤️ ${likeCount}`;
 
-likeBtn.innerText = `❤️ ${model.likesCount || 0}`;
-if (liked) likeBtn.classList.add("liked");
+/* ===== CHECK IF USER ALREADY LIKED ===== */
+onAuthStateChanged(auth, async (user) => {
+  if (!user) return;
 
+  const likeRef = doc(db, "models", id, "likes", user.uid);
+  const likeSnap = await getDoc(likeRef);
+
+  liked = likeSnap.exists();
+
+  if (liked) {
+    likeBtn.classList.add("liked");
+  }
+});
+
+/* ===== LIKE / UNLIKE TOGGLE ===== */
 likeBtn.onclick = async () => {
-  if (!currentUser || liked) return;
+  if (!currentUser) {
+    alert("Login required");
+    return;
+  }
 
+  const likeRef = doc(db, "models", id, "likes", currentUser.uid);
+
+  /* -------- UNLIKE -------- */
+  if (liked) {
+    liked = false;
+    likeCount--;
+
+    // instant UI update
+    likeBtn.classList.remove("liked");
+    likeBtn.innerText = `❤️ ${likeCount}`;
+
+    try {
+      await deleteDoc(likeRef);
+      await updateDoc(modelRef, {
+        likesCount: increment(-1)
+      });
+    } catch (err) {
+      // rollback if failed
+      liked = true;
+      likeCount++;
+      likeBtn.classList.add("liked");
+      likeBtn.innerText = `❤️ ${likeCount}`;
+      console.error(err);
+    }
+
+    return;
+  }
+
+  /* -------- LIKE -------- */
   liked = true;
+  likeCount++;
+
+  // instant UI update
   likeBtn.classList.add("liked");
-  likeBtn.innerText = `❤️ ${(model.likesCount || 0) + 1}`;
+  likeBtn.innerText = `❤️ ${likeCount}`;
 
-  await setDoc(
-    doc(db,"models",id,"likes",currentUser.uid),
-    { likedAt: serverTimestamp() }
-  );
+  try {
+    await setDoc(likeRef, {
+      likedAt: serverTimestamp()
+    });
 
-  await updateDoc(modelRef, {
-    likesCount: increment(1)
-  });
+    await updateDoc(modelRef, {
+      likesCount: increment(1)
+    });
+  } catch (err) {
+    // rollback if failed
+    liked = false;
+    likeCount--;
+    likeBtn.classList.remove("liked");
+    likeBtn.innerText = `❤️ ${likeCount}`;
+    console.error(err);
+  }
 };
+
 
 /* ================= COMMENTS + REPLIES ================= */
 const commentsRef = collection(db,"models",id,"comments");
@@ -346,12 +463,13 @@ onSnapshot(query(commentsRef,orderBy("createdAt","desc")), snap => {
 
         <button class="reply-btn" data-id="${commentId}">Reply</button>
 
-        <div class="reply-box" id="reply-box-${commentId}" style="display:none">
-          <input placeholder="Write a reply..." id="reply-input-${commentId}">
-          <button onclick="postReply('${commentId}')">Send</button>
-        </div>
+       <div class="reply-box">
+  <input class="reply-input" placeholder="Write a reply..." id="reply-input-${commentId}">
+  <button class="reply-send" onclick="sendReply('${commentId}')">Send</button>
+</div>
 
-        <div class="replies" id="replies-${commentId}"></div>
+<div class="replies" id="replies-${commentId}"></div>
+
       </div>
     `;
 
