@@ -219,7 +219,7 @@ button{
   </div>
 
   <div class="actions">
-    <a href="models.html" class="home-btn">
+    <a href="index.html" class="home-btn">
   <span class="home-icon">←</span>
   <span class="home-text">Home</span>
 </a>
@@ -265,105 +265,72 @@ const app = initializeApp({
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-/* ================= ELEMENTS ================= */
-const viewer = document.getElementById("viewer");
-const modelName = document.getElementById("modelName");
-const modelMeta = document.getElementById("modelMeta");
-const downloadBtn = document.getElementById("downloadBtn");
-const likeBtn = document.getElementById("likeBtn");
-const commentInput = document.getElementById("commentInput");
-const postBtn = document.getElementById("postBtn");
-const commentList = document.getElementById("commentList");
-
 /* ================= AUTH ================= */
 let currentUser = null;
-
-onAuthStateChanged(auth, async user => {
+onAuthStateChanged(auth, user => {
   currentUser = user;
-  commentInput.disabled = !user;
-  postBtn.disabled = !user;
-
-  if (user) {
-    const likeSnap = await getDoc(doc(db, "models", modelId, "likes", user.uid));
-    if (likeSnap.exists()) {
-      liked = true;
-      likeBtn.classList.add("liked");
-    }
-  }
 });
 
-/* ================= MODEL LOAD ================= */
-const modelId = new URLSearchParams(location.search).get("id");
-if (!modelId) location.href = "models.html";
-
-const modelRef = doc(db, "models", modelId);
+/* ================= MODEL ================= */
+const id = new URLSearchParams(location.search).get("id");
+const modelRef = doc(db, "models", id);
 const modelSnap = await getDoc(modelRef);
 if (!modelSnap.exists()) location.href = "models.html";
 
 const model = modelSnap.data();
 
 /* ================= STORAGE ================= */
-const storageSnap = await getDoc(doc(db, "settings", "storage"));
-const r2Base = storageSnap.data().r2BaseUrl.replace(/\/$/, "");
+const storageSnap = await getDoc(doc(db,"settings","storage"));
+const r2Base = storageSnap.data().r2BaseUrl.replace(/\/$/,"");
 
-/* ================= URLS ================= */
 viewer.src = `${r2Base}/${model.modelFile}`;
-const downloadUrl = `${r2Base}/${model.downloadFile}`;
-
-/* ================= META ================= */
 modelName.innerText = model.name;
-modelMeta.innerText = `${model.game || ""} · ${model.category || ""}`;
+modelMeta.innerText = `${model.game} · ${model.category}`;
 
 /* ================= DOWNLOAD ================= */
 downloadBtn.onclick = async () => {
-  try {
-    await updateDoc(modelRef, { downloadsCount: increment(1) });
-    window.open(downloadUrl, "_blank");
-  } catch (e) {
-    console.error(e);
-    alert("Download failed");
-  }
+  await updateDoc(modelRef, { downloadsCount: increment(1) });
+  window.open(`${r2Base}/${model.downloadFile}`, "_blank");
 };
 
-/* ================= LIKES (INSTANT) ================= */
+/* ================= LIKES (ONE USER = ONE LIKE) ================= */
+const likeBtn = document.getElementById("likeBtn");
 let liked = false;
-let likes = model.likesCount || 0;
 
-likeBtn.innerText = `❤️ ${likes}`;
+if (currentUser) {
+  const likeDoc = await getDoc(doc(db,"models",id,"likes",currentUser.uid));
+  liked = likeDoc.exists();
+}
+
+likeBtn.innerText = `❤️ ${model.likesCount || 0}`;
+if (liked) likeBtn.classList.add("liked");
 
 likeBtn.onclick = async () => {
   if (!currentUser || liked) return;
 
-  // instant UI
   liked = true;
-  likes++;
-  likeBtn.innerText = `❤️ ${likes}`;
   likeBtn.classList.add("liked");
+  likeBtn.innerText = `❤️ ${(model.likesCount || 0) + 1}`;
 
-  try {
-    await updateDoc(modelRef, { likesCount: increment(1) });
-    await setDoc(
-      doc(db, "models", modelId, "likes", currentUser.uid),
-      { likedAt: serverTimestamp() }
-    );
-  } catch (err) {
-    // rollback
-    liked = false;
-    likes--;
-    likeBtn.innerText = `❤️ ${likes}`;
-    console.error(err);
-  }
+  await setDoc(
+    doc(db,"models",id,"likes",currentUser.uid),
+    { likedAt: serverTimestamp() }
+  );
+
+  await updateDoc(modelRef, {
+    likesCount: increment(1)
+  });
 };
 
-/* ================= COMMENTS ================= */
-const commentsRef = collection(db, "models", modelId, "comments");
+/* ================= COMMENTS + REPLIES ================= */
+const commentsRef = collection(db,"models",id,"comments");
 
-onSnapshot(query(commentsRef, orderBy("createdAt", "desc")), snap => {
+onSnapshot(query(commentsRef,orderBy("createdAt","desc")), snap => {
   commentList.innerHTML = "";
 
-  snap.forEach(docSnap => {
-    const c = docSnap.data();
-    const commentId = docSnap.id;
+  snap.forEach(cDoc => {
+    const c = cDoc.data();
+    const commentId = cDoc.id;
     const isAdmin = ADMIN_EMAILS.includes(c.userEmail);
 
     commentList.innerHTML += `
@@ -378,30 +345,58 @@ onSnapshot(query(commentsRef, orderBy("createdAt", "desc")), snap => {
         <p>${c.text}</p>
 
         <button class="reply-btn" data-id="${commentId}">Reply</button>
+
+        <div class="reply-box" id="reply-box-${commentId}" style="display:none">
+          <input placeholder="Write a reply..." id="reply-input-${commentId}">
+          <button onclick="postReply('${commentId}')">Send</button>
+        </div>
+
         <div class="replies" id="replies-${commentId}"></div>
       </div>
     `;
 
     loadReplies(commentId);
   });
+
+  document.querySelectorAll(".reply-btn").forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.dataset.id;
+      document.getElementById(`reply-box-${id}`).style.display = "block";
+    };
+  });
 });
 
-/* ================= LOAD REPLIES ================= */
-function loadReplies(commentId) {
-  const repliesRef = collection(
-    db, "models", modelId, "comments", commentId, "replies"
+window.postReply = async (commentId)=>{
+  if(!currentUser) return;
+  const input = document.getElementById(`reply-input-${commentId}`);
+  if(!input.value.trim()) return;
+
+  await addDoc(
+    collection(db,"models",id,"comments",commentId,"replies"),
+    {
+      text: input.value,
+      userEmail: currentUser.email,
+      createdAt: serverTimestamp()
+    }
   );
 
-  onSnapshot(query(repliesRef, orderBy("createdAt")), snap => {
-    const box = document.getElementById(`replies-${commentId}`);
-    if (!box) return;
+  input.value="";
+};
 
-    box.innerHTML = "";
-    snap.forEach(r => {
-      const d = r.data();
-      box.innerHTML += `
+/* ================= LOAD REPLIES ================= */
+function loadReplies(commentId){
+  const ref = collection(db,"models",id,"comments",commentId,"replies");
+  onSnapshot(query(ref,orderBy("createdAt","asc")), snap=>{
+    const box = document.getElementById(`replies-${commentId}`);
+    box.innerHTML="";
+    snap.forEach(r=>{
+      const d=r.data();
+      const admin = ADMIN_EMAILS.includes(d.userEmail);
+      box.innerHTML+=`
         <div class="reply">
-          <b>${d.userEmail}</b>: ${d.text}
+          <b>${d.userEmail}</b>
+          ${admin?`<span class="admin-badge">ADMIN</span>`:""}
+          <p>${d.text}</p>
         </div>
       `;
     });
@@ -409,40 +404,20 @@ function loadReplies(commentId) {
 }
 
 /* ================= POST COMMENT ================= */
-postBtn.onclick = async () => {
-  if (!currentUser) return alert("Login required");
+postBtn.onclick = async ()=>{
+  if(!currentUser) return;
+  if(!commentInput.value.trim()) return;
 
-  const text = commentInput.value.trim();
-  if (!text) return;
-
-  await addDoc(commentsRef, {
-    text,
-    userEmail: currentUser.email,
-    createdAt: serverTimestamp()
+  await addDoc(commentsRef,{
+    text:commentInput.value,
+    userEmail:currentUser.email,
+    createdAt:serverTimestamp()
   });
 
-  commentInput.value = "";
+  commentInput.value="";
 };
-
-/* ================= POST REPLY ================= */
-document.addEventListener("click", async e => {
-  if (!e.target.classList.contains("reply-btn")) return;
-  if (!currentUser) return alert("Login required");
-
-  const commentId = e.target.dataset.id;
-  const text = prompt("Reply:");
-  if (!text) return;
-
-  await addDoc(
-    collection(db, "models", modelId, "comments", commentId, "replies"),
-    {
-      text,
-      userEmail: currentUser.email,
-      createdAt: serverTimestamp()
-    }
-  );
-});
 </script>
+
 
 
 <script type="module"
@@ -451,4 +426,3 @@ document.addEventListener("click", async e => {
 
 </body>
 </html>
-
