@@ -363,48 +363,62 @@ downloadBtn.onclick = async () => {
 };
 
 /* ================= LIKE SYSTEM ================= */
+
+
 let liked = false;
 let likeCount = model.likesCount || 0;
+
+// show initial count
 likeBtn.innerText = `❤️ ${likeCount}`;
 
+let likeDocRef = null;
+
+// wait for auth
 onAuthStateChanged(auth, async user => {
   currentUser = user;
-  commentInput.disabled = !user;
-  postBtn.disabled = !user;
 
   if (!user) return;
 
-  const likeDocRef = doc(db,"models",id,"likes",user.uid);
-  const likeSnap = await getDoc(likeDocRef);
-  liked = likeSnap.exists();
+  likeDocRef = doc(db, "models", id, "likes", user.uid);
+
+  const snap = await getDoc(likeDocRef);
+  liked = snap.exists();
 
   if (liked) likeBtn.classList.add("liked");
+});
 
-  likeBtn.onclick = async () => {
+// toggle like
+likeBtn.onclick = async () => {
+  if (!currentUser || !likeDocRef) {
+    alert("Login required");
+    return;
+  }
+
+  // 🔥 instant UI update
+  liked = !liked;
+  likeCount += liked ? 1 : -1;
+
+  likeBtn.innerText = `❤️ ${likeCount}`;
+  likeBtn.classList.toggle("liked", liked);
+
+  try {
+    if (liked) {
+      await setDoc(likeDocRef, { likedAt: serverTimestamp() });
+      await updateDoc(modelRef, { likesCount: increment(1) });
+    } else {
+      await deleteDoc(likeDocRef);
+      await updateDoc(modelRef, { likesCount: increment(-1) });
+    }
+  } catch (err) {
+    // rollback if failed
     liked = !liked;
     likeCount += liked ? 1 : -1;
-
     likeBtn.innerText = `❤️ ${likeCount}`;
     likeBtn.classList.toggle("liked", liked);
+    console.error("Like failed:", err);
+  }
+};
 
-    try {
-      if (liked) {
-        await setDoc(likeDocRef,{ likedAt: serverTimestamp() });
-        await updateDoc(modelRef,{ likesCount: increment(1) });
-      } else {
-        await deleteDoc(likeDocRef);
-        await updateDoc(modelRef,{ likesCount: increment(-1) });
-      }
-    } catch (e) {
-      // rollback
-      liked = !liked;
-      likeCount += liked ? 1 : -1;
-      likeBtn.innerText = `❤️ ${likeCount}`;
-      likeBtn.classList.toggle("liked", liked);
-      console.error(e);
-    }
-  };
-});
 
 /* ================= COMMENTS ================= */
 const commentsRef = collection(db,"models",id,"comments");
@@ -428,14 +442,15 @@ onSnapshot(query(commentsRef, orderBy("createdAt","desc")), snap => {
 
         <p>${c.text}</p>
 
-        <div class="reply-box">
-          <input
-            class="reply-input"
-            id="reply-input-${commentId}"
-            placeholder="Write a reply..."
-          />
-          <button onclick="sendReply('${commentId}')">Send</button>
-        </div>
+              <div class="reply-box">
+        <input
+          class="reply-input"
+          id="reply-input-${commentId}"
+          placeholder="Write a reply..."
+        />
+        <button onclick="postReply('${commentId}')">Send</button>
+      </div>
+
 
         <div class="replies" id="replies-${commentId}"></div>
       </div>
@@ -446,17 +461,16 @@ onSnapshot(query(commentsRef, orderBy("createdAt","desc")), snap => {
 });
 
 /* ================= SEND REPLY ================= */
-window.sendReply = async (commentId) => {
+window.postReply = async (commentId) => {
   if (!currentUser) return;
 
   const input = document.getElementById(`reply-input-${commentId}`);
-  const text = input.value.trim();
-  if (!text) return;
+  if (!input.value.trim()) return;
 
   await addDoc(
-    collection(db,"models",id,"comments",commentId,"replies"),
+    collection(db, "models", id, "comments", commentId, "replies"),
     {
-      text,
+      text: input.value,
       userEmail: currentUser.email,
       createdAt: serverTimestamp()
     }
@@ -464,6 +478,7 @@ window.sendReply = async (commentId) => {
 
   input.value = "";
 };
+
 
 /* ================= LOAD REPLIES ================= */
 window.loadReplies = (commentId) => {
