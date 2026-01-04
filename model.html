@@ -11,11 +11,13 @@ html,body{
   margin:0;
   background:#000;
   color:#fff;
-  font-family:Inter,system-ui,sans-serif
+  font-family:Inter,system-ui,sans-serif;
 }
 
-.viewer{height:75vh}
+/* ===== VIEWER ===== */
+.viewer{height:75vh;background:#000}
 
+/* ===== INFO BAR ===== */
 .info-bar{
   height:90px;
   display:flex;
@@ -26,21 +28,36 @@ html,body{
   border-top:1px solid rgba(255,255,255,.08)
 }
 
-#downloadBtn{
-  padding:14px 36px;
+.meta h3{margin:0;font-size:20px}
+.meta p{margin:4px 0 0;color:#94a3b8}
+
+/* ===== ACTIONS ===== */
+.actions{
+  display:flex;
+  gap:12px;
+  align-items:center;
+}
+
+.action-btn{
+  padding:12px 28px;
   border-radius:999px;
   border:none;
   font-weight:700;
   cursor:pointer;
+}
+
+#downloadBtn{
   background:linear-gradient(90deg,#00eaff,#6f7bff);
-  color:#000
+  color:#000;
 }
 
-#downloadBtn:disabled{
-  opacity:.6;
-  cursor:not-allowed;
+#likeBtn{
+  background:#111827;
+  color:#fff;
+  border:1px solid rgba(255,255,255,.15);
 }
 
+/* ===== COMMENTS ===== */
 .comments{
   max-width:900px;
   margin:40px auto;
@@ -58,7 +75,7 @@ textarea{
 }
 
 button{
-  padding:12px 20px;
+  padding:10px 18px;
   border-radius:10px;
   border:none;
   cursor:pointer;
@@ -94,6 +111,15 @@ button{
   color:#000;
   font-weight:700
 }
+
+.reply{
+  margin-left:24px;
+  margin-top:10px;
+  padding:12px;
+  background:#030712;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.08)
+}
 </style>
 </head>
 
@@ -104,17 +130,23 @@ button{
   <model-viewer id="viewer"
     camera-controls
     auto-rotate
+    exposure="1"
+    shadow-intensity="1"
     style="width:100%;height:100%">
   </model-viewer>
 </div>
 
 <!-- ================= INFO BAR ================= -->
 <div class="info-bar">
-  <div>
+  <div class="meta">
     <h3 id="modelName"></h3>
     <p id="modelMeta"></p>
   </div>
-  <button id="downloadBtn" disabled>Download</button>
+
+  <div class="actions">
+    <button id="likeBtn">❤️ <span id="likeCount">0</span></button>
+    <button id="downloadBtn">Download</button>
+  </div>
 </div>
 
 <!-- ================= COMMENTS ================= -->
@@ -127,15 +159,24 @@ button{
   <div id="commentList"></div>
 </div>
 
-<!-- ================= FIREBASE ================= -->
+<!-- ================= SCRIPTS ================= -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
   getFirestore, doc, getDoc, updateDoc, increment,
-  collection, addDoc, query, orderBy, onSnapshot, serverTimestamp
+  collection, addDoc, query, orderBy, onSnapshot,
+  serverTimestamp, setDoc, deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
+/* ===== CONFIG ===== */
+const ADMIN_EMAILS = [
+  "hrd9011@gmail.com",
+  "gggonetaponetap@gmail.com",
+  "sunnehsunnehjk@gmail.com"
+];
+
+/* ===== INIT ===== */
 const app = initializeApp({
   apiKey: "AIzaSyBy5JEPEcplViq8AkK-_uY8JXU5iHUM6ns",
   authDomain: "top-notch-log-data.firebaseapp.com",
@@ -145,78 +186,95 @@ const app = initializeApp({
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-/* AUTH */
+/* ===== AUTH ===== */
 let currentUser = null;
-onAuthStateChanged(auth, u => {
-  currentUser = u;
-  commentInput.disabled = !u;
-  postBtn.disabled = !u;
+onAuthStateChanged(auth, user => {
+  currentUser = user;
+  commentInput.disabled = !user;
+  postBtn.disabled = !user;
 });
 
-/* MODEL */
+/* ===== MODEL LOAD ===== */
 const id = new URLSearchParams(location.search).get("id");
-const modelRef = doc(db, "models", id);
-const snap = await getDoc(modelRef);
+const modelRef = doc(db,"models",id);
+const modelSnap = await getDoc(modelRef);
+if(!modelSnap.exists()) location.href="models.html";
 
-if (!snap.exists()) {
-  alert("Model not found");
-  location.href = "models.html";
-}
+const model = modelSnap.data();
 
-const model = snap.data();
+/* ===== STORAGE ===== */
+const storageSnap = await getDoc(doc(db,"settings","storage"));
+const r2Base = storageSnap.data().r2BaseUrl.replace(/\/$/,"");
 
-/* STORAGE SETTINGS */
-const storageSnap = await getDoc(doc(db, "settings", "storage"));
-const r2BaseUrl = storageSnap.data().r2BaseUrl.replace(/\/$/, "");
+/* ===== URLs ===== */
+viewer.src = `${r2Base}/${model.modelFile}`;
+const downloadUrl = `${r2Base}/${model.downloadFile}`;
 
-/* FINAL URLS */
-const modelUrl = `${r2BaseUrl}/${model.modelFile}`;
-const downloadUrl = `${r2BaseUrl}/${model.downloadFile}`;
-
-/* VIEWER */
-viewer.src = modelUrl;
+/* ===== META ===== */
 modelName.innerText = model.name;
 modelMeta.innerText = `${model.game} · ${model.category}`;
+likeCount.innerText = model.likesCount || 0;
 
-/* ENABLE DOWNLOAD */
-downloadBtn.disabled = false;
-downloadBtn.onclick = async () => {
-  await updateDoc(modelRef, {
-    downloadsCount: increment(1)
-  });
-  window.open(downloadUrl, "_blank");
+/* ===== DOWNLOAD ===== */
+downloadBtn.onclick = async ()=>{
+  await updateDoc(modelRef,{downloadsCount:increment(1)});
+  window.open(downloadUrl,"_blank");
 };
 
-/* COMMENTS */
-const q = query(
-  collection(db, "models", id, "comments"),
-  orderBy("createdAt", "desc")
-);
+/* ===== LIKES ===== */
+if(currentUser){
+  const likeRef = doc(db,"models",id,"likes",currentUser.uid);
+  const likeSnap = await getDoc(likeRef);
+  if(likeSnap.exists()) likeBtn.style.opacity=.5;
 
-onSnapshot(q, snap => {
-  commentList.innerHTML = "";
-  snap.forEach(d => {
-    const c = d.data();
-    commentList.innerHTML += `<div class="comment"><b>${c.userEmail}</b><p>${c.text}</p></div>`;
+  likeBtn.onclick = async ()=>{
+    if((await getDoc(likeRef)).exists()){
+      await deleteDoc(likeRef);
+      await updateDoc(modelRef,{likesCount:increment(-1)});
+    }else{
+      await setDoc(likeRef,{createdAt:serverTimestamp()});
+      await updateDoc(modelRef,{likesCount:increment(1)});
+    }
+  };
+}
+
+/* ===== COMMENTS ===== */
+const commentsRef = collection(db,"models",id,"comments");
+onSnapshot(query(commentsRef,orderBy("createdAt","desc")),snap=>{
+  commentList.innerHTML="";
+  snap.forEach(cDoc=>{
+    const c=cDoc.data();
+    const admin = ADMIN_EMAILS.includes(c.userEmail);
+    commentList.innerHTML+=`
+      <div class="comment">
+        <div class="comment-head">
+          <div class="comment-user">
+            <b>${c.userEmail}</b>
+            ${admin?'<span class="admin-badge">ADMIN</span>':''}
+          </div>
+        </div>
+        <p>${c.text}</p>
+      </div>`;
   });
 });
 
-postBtn.onclick = async () => {
-  if (!currentUser) return;
-  await addDoc(collection(db, "models", id, "comments"), {
-    text: commentInput.value,
-    userEmail: currentUser.email,
-    createdAt: serverTimestamp()
+/* ===== POST COMMENT ===== */
+postBtn.onclick = async ()=>{
+  if(!currentUser) return;
+  const text=commentInput.value.trim();
+  if(!text) return;
+  await addDoc(commentsRef,{
+    text,
+    userEmail:currentUser.email,
+    createdAt:serverTimestamp()
   });
-  commentInput.value = "";
+  commentInput.value="";
 };
 </script>
 
-
 <script type="module"
-  src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js">
+ src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js">
 </script>
 
 </body>
 </html>
-
