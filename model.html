@@ -56,6 +56,10 @@ html,body{
   color:#fff;
   border:1px solid rgba(255,255,255,.15);
 }
+.like-btn.liked {
+  background: linear-gradient(135deg,#ff4d4d,#ff7b7b);
+  color:#000;
+}
 
 /* ===== COMMENTS ===== */
 .comments{
@@ -120,6 +124,77 @@ button{
   border-radius:10px;
   border:1px solid rgba(255,255,255,.08)
 }
+
+/* HOME BUTTON – PREMIUM */
+.home-btn{
+  position: fixed;                 /* stays visible */
+  top: 22px;
+  left: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 12px 18px;
+  border-radius: 14px;
+
+  text-decoration: none;
+  text-transform: uppercase;
+
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+
+  color: #ffffff;
+
+  background: linear-gradient(
+    135deg,
+    rgba(20,22,40,0.85),
+    rgba(8,10,24,0.9)
+  );
+
+  border: 1px solid rgba(255,255,255,0.08);
+  backdrop-filter: blur(14px);
+
+  box-shadow:
+    0 18px 50px rgba(0,0,0,0.6),
+    inset 0 0 0 1px rgba(255,255,255,0.04);
+
+  transition: 
+    transform .25s ease,
+    box-shadow .25s ease,
+    border-color .25s ease,
+    color .25s ease;
+
+  z-index: 999;
+}
+
+/* ICON */
+.home-btn .home-icon{
+  font-size: 14px;
+  opacity: 0.85;
+  transition: transform .25s ease;
+}
+
+/* HOVER */
+.home-btn:hover{
+  transform: translateY(-2px);
+  border-color: rgba(100,103,255,0.6);
+  color: #6467ff;
+
+  box-shadow:
+    0 28px 90px rgba(0,0,0,0.75),
+    0 0 40px rgba(100,103,255,0.35);
+}
+
+.home-btn:hover .home-icon{
+  transform: translateX(-3px);
+}
+
+/* ACTIVE (CLICK) */
+.home-btn:active{
+  transform: translateY(0);
+}
 </style>
 </head>
 
@@ -144,6 +219,10 @@ button{
   </div>
 
   <div class="actions">
+    <a href="index.html" class="home-btn">
+  <span class="home-icon">←</span>
+  <span class="home-text">Home</span>
+</a>
     <button id="likeBtn">❤️ <span id="likeCount">0</span></button>
     <button id="downloadBtn">Download</button>
   </div>
@@ -165,18 +244,18 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import {
   getFirestore, doc, getDoc, updateDoc, increment,
   collection, addDoc, query, orderBy, onSnapshot,
-  serverTimestamp, setDoc, deleteDoc
+  serverTimestamp, setDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-/* ===== CONFIG ===== */
+/* ================= CONFIG ================= */
 const ADMIN_EMAILS = [
   "hrd9011@gmail.com",
   "gggonetaponetap@gmail.com",
   "sunnehsunnehjk@gmail.com"
 ];
 
-/* ===== INIT ===== */
+/* ================= INIT ================= */
 const app = initializeApp({
   apiKey: "AIzaSyBy5JEPEcplViq8AkK-_uY8JXU5iHUM6ns",
   authDomain: "top-notch-log-data.firebaseapp.com",
@@ -186,87 +265,152 @@ const app = initializeApp({
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-/* ===== AUTH ===== */
+/* ================= ELEMENTS ================= */
+const viewer = document.getElementById("viewer");
+const modelName = document.getElementById("modelName");
+const modelMeta = document.getElementById("modelMeta");
+const downloadBtn = document.getElementById("downloadBtn");
+const likeBtn = document.getElementById("likeBtn");
+const commentInput = document.getElementById("commentInput");
+const postBtn = document.getElementById("postBtn");
+const commentList = document.getElementById("commentList");
+
+/* ================= AUTH ================= */
 let currentUser = null;
-onAuthStateChanged(auth, user => {
+
+onAuthStateChanged(auth, async user => {
   currentUser = user;
   commentInput.disabled = !user;
   postBtn.disabled = !user;
+
+  if (user) {
+    const likeSnap = await getDoc(doc(db, "models", modelId, "likes", user.uid));
+    if (likeSnap.exists()) {
+      liked = true;
+      likeBtn.classList.add("liked");
+    }
+  }
 });
 
-/* ===== MODEL LOAD ===== */
-const id = new URLSearchParams(location.search).get("id");
-const modelRef = doc(db,"models",id);
+/* ================= MODEL LOAD ================= */
+const modelId = new URLSearchParams(location.search).get("id");
+if (!modelId) location.href = "models.html";
+
+const modelRef = doc(db, "models", modelId);
 const modelSnap = await getDoc(modelRef);
-if(!modelSnap.exists()) location.href="models.html";
+if (!modelSnap.exists()) location.href = "models.html";
 
 const model = modelSnap.data();
 
-/* ===== STORAGE ===== */
-const storageSnap = await getDoc(doc(db,"settings","storage"));
-const r2Base = storageSnap.data().r2BaseUrl.replace(/\/$/,"");
+/* ================= STORAGE ================= */
+const storageSnap = await getDoc(doc(db, "settings", "storage"));
+const r2Base = storageSnap.data().r2BaseUrl.replace(/\/$/, "");
 
-/* ===== URLs ===== */
+/* ================= URLS ================= */
 viewer.src = `${r2Base}/${model.modelFile}`;
 const downloadUrl = `${r2Base}/${model.downloadFile}`;
 
-/* ===== META ===== */
+/* ================= META ================= */
 modelName.innerText = model.name;
-modelMeta.innerText = `${model.game} · ${model.category}`;
-likeCount.innerText = model.likesCount || 0;
+modelMeta.innerText = `${model.game || ""} · ${model.category || ""}`;
 
-/* ===== DOWNLOAD ===== */
-downloadBtn.onclick = async ()=>{
-  await updateDoc(modelRef,{downloadsCount:increment(1)});
-  window.open(downloadUrl,"_blank");
+/* ================= DOWNLOAD ================= */
+downloadBtn.onclick = async () => {
+  try {
+    await updateDoc(modelRef, { downloadsCount: increment(1) });
+    window.open(downloadUrl, "_blank");
+  } catch (e) {
+    console.error(e);
+    alert("Download failed");
+  }
 };
 
-/* ===== LIKES ===== */
+/* ================= LIKES (INSTANT) ================= */
+let liked = false;
+let likes = model.likesCount || 0;
+
+likeBtn.innerText = `❤️ ${likes}`;
+
 likeBtn.onclick = async () => {
-  if (!currentUser) {
-    alert("Login required");
-    return;
-  }
+  if (!currentUser || liked) return;
 
-  const likeRef = doc(db, "models", id, "likes", currentUser.uid);
-  const snap = await getDoc(likeRef);
+  // instant UI
+  liked = true;
+  likes++;
+  likeBtn.innerText = `❤️ ${likes}`;
+  likeBtn.classList.add("liked");
 
-  if (snap.exists()) {
-    await deleteDoc(likeRef);
-    await updateDoc(modelRef, { likesCount: increment(-1) });
-  } else {
-    await setDoc(likeRef, { createdAt: serverTimestamp() });
+  try {
     await updateDoc(modelRef, { likesCount: increment(1) });
+    await setDoc(
+      doc(db, "models", modelId, "likes", currentUser.uid),
+      { likedAt: serverTimestamp() }
+    );
+  } catch (err) {
+    // rollback
+    liked = false;
+    likes--;
+    likeBtn.innerText = `❤️ ${likes}`;
+    console.error(err);
   }
 };
 
+/* ================= COMMENTS ================= */
+const commentsRef = collection(db, "models", modelId, "comments");
 
-/* ===== COMMENTS ===== */
-const commentsRef = collection(db,"models",id,"comments");
-onSnapshot(query(commentsRef,orderBy("createdAt","desc")),snap=>{
-  commentList.innerHTML="";
-  snap.forEach(cDoc=>{
-    const c=cDoc.data();
-    const admin = ADMIN_EMAILS.includes(c.userEmail);
-    commentList.innerHTML+=`
+onSnapshot(query(commentsRef, orderBy("createdAt", "desc")), snap => {
+  commentList.innerHTML = "";
+
+  snap.forEach(docSnap => {
+    const c = docSnap.data();
+    const commentId = docSnap.id;
+    const isAdmin = ADMIN_EMAILS.includes(c.userEmail);
+
+    commentList.innerHTML += `
       <div class="comment">
         <div class="comment-head">
           <div class="comment-user">
             <b>${c.userEmail}</b>
-            ${admin?'<span class="admin-badge">ADMIN</span>':''}
+            ${isAdmin ? `<span class="admin-badge">ADMIN</span>` : ""}
           </div>
         </div>
+
         <p>${c.text}</p>
-      </div>`;
+
+        <button class="reply-btn" data-id="${commentId}">Reply</button>
+        <div class="replies" id="replies-${commentId}"></div>
+      </div>
+    `;
+
+    loadReplies(commentId);
   });
 });
 
-/* ===== POST COMMENT ===== */
+/* ================= LOAD REPLIES ================= */
+function loadReplies(commentId) {
+  const repliesRef = collection(
+    db, "models", modelId, "comments", commentId, "replies"
+  );
+
+  onSnapshot(query(repliesRef, orderBy("createdAt")), snap => {
+    const box = document.getElementById(`replies-${commentId}`);
+    if (!box) return;
+
+    box.innerHTML = "";
+    snap.forEach(r => {
+      const d = r.data();
+      box.innerHTML += `
+        <div class="reply">
+          <b>${d.userEmail}</b>: ${d.text}
+        </div>
+      `;
+    });
+  });
+}
+
+/* ================= POST COMMENT ================= */
 postBtn.onclick = async () => {
-  if (!currentUser) {
-    alert("Login required");
-    return;
-  }
+  if (!currentUser) return alert("Login required");
 
   const text = commentInput.value.trim();
   if (!text) return;
@@ -280,7 +424,26 @@ postBtn.onclick = async () => {
   commentInput.value = "";
 };
 
+/* ================= POST REPLY ================= */
+document.addEventListener("click", async e => {
+  if (!e.target.classList.contains("reply-btn")) return;
+  if (!currentUser) return alert("Login required");
+
+  const commentId = e.target.dataset.id;
+  const text = prompt("Reply:");
+  if (!text) return;
+
+  await addDoc(
+    collection(db, "models", modelId, "comments", commentId, "replies"),
+    {
+      text,
+      userEmail: currentUser.email,
+      createdAt: serverTimestamp()
+    }
+  );
+});
 </script>
+
 
 <script type="module"
  src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js">
